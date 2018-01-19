@@ -116,7 +116,8 @@ export async function inlineHtmlImport(
       return;
     }
 
-    const relative = urlUtils.relativeUrl(document.url, importBundle.url) ||
+    const relative =
+        analyzer.urlResolver.relative(document.url, importBundle.url) ||
         importBundle.url;
     dom5.setAttribute(linkTag, 'href', relative);
     stripImports.add(importBundle.url);
@@ -144,9 +145,13 @@ export async function inlineHtmlImport(
   const importAst = parse5.parseFragment(
       htmlImport.document.parsedDocument.contents, {locationInfo: true});
   rewriteAstToEmulateBaseTag(
-      importAst, resolvedImportUrl, rewriteUrlsInTemplates);
+      analyzer, importAst, resolvedImportUrl, rewriteUrlsInTemplates);
   rewriteAstBaseUrl(
-      importAst, resolvedImportUrl, document.url, rewriteUrlsInTemplates);
+      analyzer,
+      importAst,
+      resolvedImportUrl,
+      document.url,
+      rewriteUrlsInTemplates);
 
   if (enableSourcemaps) {
     const reparsedDoc = new ParsedHtmlDocument({
@@ -313,7 +318,10 @@ export async function inlineStylesheet(
  * link and form target attributes and remove the base tag.
  */
 export function rewriteAstToEmulateBaseTag(
-    ast: ASTNode, docUrl: ResolvedUrl, rewriteUrlsInTemplates?: boolean) {
+    analyzer: Analyzer,
+    ast: ASTNode,
+    docUrl: ResolvedUrl,
+    rewriteUrlsInTemplates?: boolean) {
   const baseTag = dom5.query(ast, matchers.base);
   const p = dom5.predicates;
   // If there's no base tag, there's nothing to do.
@@ -327,7 +335,7 @@ export function rewriteAstToEmulateBaseTag(
     const baseUrl =
         urlLib.resolve(docUrl, dom5.getAttribute(baseTag, 'href')!) as
         ResolvedUrl;
-    rewriteAstBaseUrl(ast, baseUrl, docUrl, rewriteUrlsInTemplates);
+    rewriteAstBaseUrl(analyzer, ast, baseUrl, docUrl, rewriteUrlsInTemplates);
   }
   if (p.hasAttr('target')(baseTag)) {
     const baseTarget = dom5.getAttribute(baseTag, 'target')!;
@@ -348,6 +356,7 @@ export function rewriteAstToEmulateBaseTag(
  * imported from the import url.
  */
 export function rewriteAstBaseUrl(
+    analyzer: Analyzer,
     ast: ASTNode,
     oldBaseUrl: ResolvedUrl,
     newBaseUrl: ResolvedUrl,
@@ -355,7 +364,7 @@ export function rewriteAstBaseUrl(
   rewriteElementAttrsBaseUrl(
       ast, oldBaseUrl, newBaseUrl, rewriteUrlsInTemplates);
   rewriteStyleTagsBaseUrl(ast, oldBaseUrl, newBaseUrl, rewriteUrlsInTemplates);
-  setDomModuleAssetpaths(ast, oldBaseUrl, newBaseUrl);
+  setDomModuleAssetpaths(analyzer, ast, oldBaseUrl, newBaseUrl);
 }
 
 /**
@@ -517,11 +526,14 @@ function rewriteStyleTagsBaseUrl(
  * have them if the base urls are different.
  */
 function setDomModuleAssetpaths(
-    ast: ASTNode, oldBaseUrl: ResolvedUrl, newBaseUrl: ResolvedUrl) {
+    analyzer: Analyzer,
+    ast: ASTNode,
+    oldBaseUrl: ResolvedUrl,
+    newBaseUrl: ResolvedUrl) {
   const domModules = dom5.queryAll(ast, matchers.domModuleWithoutAssetpath);
   for (let i = 0, node: ASTNode; i < domModules.length; i++) {
     node = domModules[i];
-    const assetPathUrl = urlUtils.relativeUrl(
+    const assetPathUrl = analyzer.urlResolver.relative(
         newBaseUrl,
         urlUtils.stripUrlFileSearchAndHash(oldBaseUrl) as ResolvedUrl);
 
