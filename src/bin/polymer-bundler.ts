@@ -16,7 +16,6 @@ import * as commandLineArgs from 'command-line-args';
 import * as commandLineUsage from 'command-line-usage';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as parse5 from 'parse5';
 import * as mkdirp from 'mkdirp';
 import * as pathLib from 'path';
 import Uri from 'vscode-uri';
@@ -350,7 +349,6 @@ interface JsonManifest {
           'Must specify out-dir when bundling multiple entrypoints');
     }
     for (const [url, document] of documents) {
-      const ast = document.ast;
       // When writing the output bundles to the filesystem, we need their paths
       // to be package relative, since the destination is different than their
       // original filesystem locations.
@@ -358,9 +356,8 @@ interface JsonManifest {
           pathLib.resolve(pathLib.join(outDir, getPackageRelativeUrl(url)));
       const finalDir = pathLib.dirname(out);
       mkdirp.sync(finalDir);
-      const serialized = parse5.serialize(ast);
       const fd = fs.openSync(out, 'w');
-      fs.writeSync(fd, serialized + '\n');
+      fs.writeSync(fd, document.content);
       fs.closeSync(fd);
     }
     return;
@@ -369,13 +366,12 @@ interface JsonManifest {
   if (!doc) {
     return;
   }
-  const serialized = parse5.serialize(doc.ast);
   if (options['out-html']) {
     const fd = fs.openSync(options['out-html'], 'w');
-    fs.writeSync(fd, serialized + '\n');
+    fs.writeSync(fd, doc.content);
     fs.closeSync(fd);
   } else {
-    process.stdout.write(serialized);
+    process.stdout.write(doc.content);
   }
 })().catch((err) => {
   console.log(err.stack);
