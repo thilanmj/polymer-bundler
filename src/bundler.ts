@@ -15,7 +15,6 @@ import * as clone from 'clone';
 import * as dom5 from 'dom5';
 import * as parse5 from 'parse5';
 import {ASTNode, serialize, treeAdapters} from 'parse5';
-import * as path from 'path';
 import {Analyzer, Document, FileRelativeUrl, FSUrlLoader, InMemoryOverlayUrlLoader, ResolvedUrl} from 'polymer-analyzer';
 
 import {getAnalysisDocument} from './analyzer-utils';
@@ -47,7 +46,7 @@ export interface Options {
   // the output document.
   inlineScripts?: boolean;
 
-  // Rewrite element attributes inside of templates to adjust urls in inlined
+  // Rewrite element attributes inside of templates to adjust URLs in inlined
   // html imports.
   rewriteUrlsInTemplates?: boolean;
 
@@ -60,7 +59,7 @@ export interface Options {
   // Bundle strategy used to construct the output bundles.
   strategy?: BundleStrategy;
 
-  // Bundle url mapper function that produces urls for the generated bundles.
+  // Bundle URL mapper function that produces URLs for the generated bundles.
   urlMapper?: BundleUrlMapper;
 }
 
@@ -93,8 +92,8 @@ export class Bundler {
       this._overlayUrlLoader = new InMemoryOverlayUrlLoader(analyzer);
       this.analyzer = analyzer._fork({urlLoader: this._overlayUrlLoader});
     } else {
-      this._overlayUrlLoader =
-          new InMemoryOverlayUrlLoader(new FSUrlLoader(path.resolve('.')));
+      this._overlayUrlLoader = new InMemoryOverlayUrlLoader(
+          new FSUrlLoader(urlUtils.resolvePath('.')));
       this.analyzer = new Analyzer({urlLoader: this._overlayUrlLoader});
     }
 
@@ -145,7 +144,7 @@ export class Bundler {
    *     `strategy`.
    * @param strategy - The strategy used to construct the output bundles.
    *     See 'polymer-analyzer/src/bundle-manifest'.
-   * @param mapper - A function that produces urls for the generated bundles.
+   * @param mapper - A function that produces URLs for the generated bundles.
    *     See 'polymer-analyzer/src/bundle-manifest'.
    */
   async generateManifest(entrypoints: ResolvedUrl[]): Promise<BundleManifest> {
@@ -159,7 +158,7 @@ export class Bundler {
   }
 
   /**
-   * Analyze a url using the given contents in place of what would otherwise
+   * Analyze a URL using the given contents in place of what would otherwise
    * have been loaded.
    */
   private async _analyzeContents(url: ResolvedUrl, contents: string):
@@ -195,7 +194,7 @@ export class Bundler {
 
   /**
    * Produces a document containing the content of all of the bundle's files.
-   * If the bundle's url resolves to an existing html file, that file will be
+   * If the bundle's URL resolves to an existing html file, that file will be
    * used as the basis for the generated document.
    */
   private async _bundleDocument(
@@ -357,7 +356,7 @@ export class Bundler {
         // If the existing import has a dependency on the import we are about
         // to inject, it may be our new target.
         if (existingImportDependencies.get(existingImport.document.url)!
-                .indexOf(importUrl as ResolvedUrl) !== -1) {
+                .indexOf(importUrl) !== -1) {
           const newPrependTarget = dom5.query(
               ast, (node) => astUtils.sameNode(node, existingImport.astNode));
 
@@ -388,7 +387,7 @@ export class Bundler {
 
   /**
    * Replace html import links in the document with the contents of the
-   * imported file, but only once per url.
+   * imported file, but only once per URL.
    */
   private async _inlineHtmlImports(
       document: Document,

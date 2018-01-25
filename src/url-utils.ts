@@ -19,12 +19,22 @@ import * as path from 'path';
 import * as url from 'url';
 import constants from './constants';
 import {FileRelativeUrl, ResolvedUrl} from 'polymer-analyzer';
+import Uri from 'vscode-uri';
 
 /**
- * A string representing a URL.
+ * Given a string representing a URL or path of some form, append a `/`
+ * character if it doesn't already end with one.
  */
-export function ensureTrailingSlash(href: string) {
-  return href.endsWith('/') ? href : (href + '/');
+export function ensureTrailingSlash<T>(href: T): T {
+  const hrefString = href as any as string;
+  return hrefString.endsWith('/') ? href : (href + '/') as any as T;
+}
+
+/**
+ * Returns a WHATWG ResolvedURL for a filename on local filesystem.
+ */
+export function getFileUrl(filename: string): ResolvedUrl {
+  return Uri.file(resolvePath(filename)).toString() as ResolvedUrl;
 }
 
 /**
@@ -73,8 +83,24 @@ function pathPosixRelative(from: string, to: string): string {
 }
 
 /**
- * Modifies an href by the relative difference between the old base url and
- * the new base url.
+ * The path library's resolve function drops the trailing slash from the input
+ * when returning the result.  This is bad because clients of the function then
+ * have to ensure it is reapplied conditionally.  This function resolves the
+ * input path while preserving the trailing slash, when present.
+ */
+export function resolvePath(...segments: string[]): string {
+  if (segments.length === 0) {
+    // Special cwd case
+    return ensureTrailingSlash(path.resolve());
+  }
+  const lastSegment = segments[segments.length - 1];
+  const resolved = path.resolve(...segments);
+  return lastSegment.endsWith('/') ? ensureTrailingSlash(resolved) : resolved;
+}
+
+/**
+ * Modifies an href by the relative difference between the old base URL and
+ * the new base URL.
  */
 export function rewriteHrefBaseUrl<T>(
     href: T, oldBaseUrl: ResolvedUrl, newBaseUrl: ResolvedUrl): T|

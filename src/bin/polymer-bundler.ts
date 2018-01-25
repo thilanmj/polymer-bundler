@@ -15,16 +15,14 @@
 import * as commandLineArgs from 'command-line-args';
 import * as commandLineUsage from 'command-line-usage';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as parse5 from 'parse5';
 import * as mkdirp from 'mkdirp';
 import * as pathLib from 'path';
-import Uri from 'vscode-uri';
 import {Bundler} from '../bundler';
 import {Analyzer, FSUrlLoader, MultiUrlLoader, MultiUrlResolver, PackageRelativeUrl, PackageUrlResolver, RedirectResolver, ResolvedUrl, UrlLoader, UrlResolver} from 'polymer-analyzer';
 import {DocumentCollection} from '../document-collection';
 import {generateShellMergeStrategy, BundleManifest} from '../bundle-manifest';
-import {ensureTrailingSlash} from '../url-utils';
+import {ensureTrailingSlash, getFileUrl, resolvePath} from '../url-utils';
 
 const prefixArgument = '[underline]{prefix}';
 const pathArgument = '[underline]{path}';
@@ -146,7 +144,7 @@ const usage = [
       },
       {
         desc:
-            'Inline the HTML Imports of \`target.html\`, treat \`path/to/target/\` as the webroot of target.html, and make all urls absolute to the provided webroot.',
+            'Inline the HTML Imports of \`target.html\`, treat \`path/to/target/\` as the webroot of target.html, and make all URLs absolute to the provided webroot.',
         example: 'polymer-bundler -p "path/to/target/" /target.html'
       },
       {
@@ -169,10 +167,8 @@ const usage = [
 ];
 
 const options = commandLineArgs(optionDefinitions);
-const projectRoot =
-    options.root ? pathLib.resolve(options.root) : pathLib.resolve('.');
-const projectRootUrl =
-    ensureTrailingSlash(Uri.file(projectRoot).toString()) as ResolvedUrl;
+const projectRoot = resolvePath(ensureTrailingSlash(options.root || '.'));
+const projectRootUrl = getFileUrl(projectRoot);
 
 const entrypoints: PackageRelativeUrl[] = options['in-html'];
 
@@ -205,19 +201,19 @@ options.rewriteUrlsInTemplates = Boolean(options['rewrite-urls-in-templates']);
 const fsUrlLoader = new FSUrlLoader(projectRoot);
 const packageUrlResolver = new PackageUrlResolver({packageDir: projectRoot});
 
-// getPackageRelativeUrl(url) reverses the resolved url format into the original
-// package relative url format.  This is done primarily so that the generated
-// manifest includes package relative urls in the output instead of detailed
-// local filesystem information which is present in resolved urls.  This is
+// getPackageRelativeUrl(url) reverses the resolved URL format into the original
+// package relative URL format.  This is done primarily so that the generated
+// manifest includes package relative URLs in the output instead of detailed
+// local filesystem information which is present in resolved URLs.  This is
 // defined here with a `let` because the redirect option will result in the
 // function being wrapped with transformations for any redirect options.
-let getPackageRelativeUrl: (r: ResolvedUrl) => PackageRelativeUrl = function(
-    resolvedUrl: ResolvedUrl): PackageRelativeUrl {
-  if (resolvedUrl.startsWith(projectRootUrl)) {
-    return resolvedUrl.slice(projectRootUrl.length) as PackageRelativeUrl;
-  }
-  return resolvedUrl as any as PackageRelativeUrl;
-};
+let getPackageRelativeUrl: (r: ResolvedUrl) => PackageRelativeUrl =
+    (resolvedUrl: ResolvedUrl): PackageRelativeUrl => {
+      if (resolvedUrl.startsWith(projectRootUrl)) {
+        return resolvedUrl.slice(projectRootUrl.length) as PackageRelativeUrl;
+      }
+      return resolvedUrl as any as PackageRelativeUrl;
+    };
 
 if (options.redirect) {
   type redirection = {prefix: string, path: string};
@@ -228,27 +224,23 @@ if (options.redirect) {
             return {prefix, path};
           })
           .filter((r: redirection) => r.prefix && r.path);
-  const resolvers: UrlResolver[] = redirections.map((r: redirection) => {
-    let resolvedPath = Uri.file(path.resolve(r.path)).toString();
-    // Ensure trailing slash if input path had trailing slash
-    if (r.path.match(/\\$|\/$/)) {
-      resolvedPath = ensureTrailingSlash(resolvedPath);
-    }
-    return new RedirectResolver(
-        packageUrlResolver.resolve(r.prefix as PackageRelativeUrl)!,
-        r.prefix,
-        resolvedPath);
-  });
+  const resolvers: UrlResolver[] = redirections.map(
+      (r: redirection) => new RedirectResolver(
+          packageUrlResolver.resolve(r.prefix as PackageRelativeUrl)!,
+          r.prefix,
+          getFileUrl(r.path)));
 
   // Wrap the getPackageRelativeUrl function for each redirection.  Because we
   // are wrapping the function, we iterate in reverse order to ensure the
   // redirect transformations are processed in the same order as they're given.
+  // TODO(usergenic): Remove this whole getPackageRelativeUrl() function when
+  // analyzer can reliably reverse a resolved URL into provide a package
+  // relative URL when using MultiUrlResolver.
   redirections.reverse().forEach((r: redirection) => {
     const oldGetPackageRelativeUrl = getPackageRelativeUrl;
-    const newGetPackageRelativeUrl = function(resolvedUrl: ResolvedUrl):
-        PackageRelativeUrl {
-          const redirectionPathUrl =
-              ensureTrailingSlash(Uri.file(path.resolve(r.path)).toString());
+    const newGetPackageRelativeUrl =
+        (resolvedUrl: ResolvedUrl): PackageRelativeUrl => {
+          const redirectionPathUrl = getFileUrl(resolvePath(r.path));
           if (resolvedUrl.startsWith(redirectionPathUrl)) {
             return r.prefix + resolvedUrl.slice(redirectionPathUrl.length) as
                 PackageRelativeUrl;
@@ -259,7 +251,7 @@ if (options.redirect) {
   });
 
   const loaders: UrlLoader[] = redirections.map(
-      (r: redirection) => new FSUrlLoader(path.resolve(r.path)));
+      (r: redirection) => new FSUrlLoader(resolvePath(r.path)));
   if (redirections.length > 0) {
     options.analyzer = new Analyzer({
       urlResolver: new MultiUrlResolver([...resolvers, packageUrlResolver]),
@@ -285,7 +277,7 @@ interface JsonManifest {
 }
 (async () => {
 
-  // Produces a bundle manifest object where all the urls represented are
+  // Produces a bundle manifest object where all the URLs represented are
   // package relative.
   function bundleManifestToJson(manifest: BundleManifest): JsonManifest {
     const json: JsonManifest = {};
@@ -354,8 +346,7 @@ interface JsonManifest {
       // When writing the output bundles to the filesystem, we need their paths
       // to be package relative, since the destination is different than their
       // original filesystem locations.
-      const out =
-          pathLib.resolve(pathLib.join(outDir, getPackageRelativeUrl(url)));
+      const out = resolvePath(outDir, getPackageRelativeUrl(url));
       const finalDir = pathLib.dirname(out);
       mkdirp.sync(finalDir);
       const serialized = parse5.serialize(ast);
