@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
-- [BREAKING] Upgraded to use `polymer-analyzer` version `3.0.0-pre.8` which requires the `ResolvedUrl` type in nearly all places where URLs are exchanged.  Eliminated the local `UrlString` type.
+- [BREAKING] Upgraded to use `polymer-analyzer` version `3.0.0-pre.9` which requires the `ResolvedUrl` type in nearly all places where URLs are exchanged.  Eliminated the local `UrlString` type.
 - [BREAKING] Removed `relativeUrl` function from `url-utils`, shifting responsibility to `Bundler#analyzer.urlResolver.relative()`.
 <!-- Add new, unreleased changes here. -->
 
